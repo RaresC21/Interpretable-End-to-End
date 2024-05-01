@@ -23,10 +23,11 @@ class DataGen:
         X2 = 2 * torch.randn(n_data, self.n_features).to(self.DEVICE) + 0.1
         X1 = torch.randn(n_data, self.n_features).to(self.DEVICE) - 0.2
         mu = torch.rand(n_data).to(self.DEVICE)
-        mu = mu.view(-1,1).repeat(1,self.n_features)
+        mu = mu.view(-1,1).repeat(1, self.n_features)
         X = (X1 + X2 * mu)
         
-        y = self.data_model(X)
+        with torch.no_grad():
+            y = self.data_model(X)
 
         y = 0.5 + y + 0.1 * torch.randn_like(y).to(self.DEVICE)
         # y = 0.5 + y + 0.1 * torch.from_numpy(np.random.multivariate_normal([0,0], [[1,0],[0,1]], len(y)))

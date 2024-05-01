@@ -75,6 +75,8 @@ if __name__ == '__main__':
     if torch.cuda.is_available(): 
         DEVICE = "cuda"
 
+    print("DEVICE", DEVICE)
+        
     h = 1
     b = 5
     H = torch.tensor([h for i in range(n_nodes)]).to(DEVICE)
@@ -82,14 +84,14 @@ if __name__ == '__main__':
 
     problem_ = Problem(H, B, n_nodes)
     cross_costs = np.array([[0, 0], [0, 0]])
-
+    
     n_data = 100
     n_test = 1000
-    data_generator = DataGen(n_features, n_nodes)
+    data_generator = DataGen(n_features, n_nodes, DEVICE)
     X_train, Y_train, X_test, Y_test = data_generator.get_test_train(n_data, n_test)
-
+    
     print("Train Two-Stage -------------------------------------")
-    two_stage_forecast = train_two_stage(problem_, X_train, Y_train, X_test, Y_test, EPOCHS=1000, DEVICE=DEVICE)
+    two_stage_forecast = train_two_stage(problem_, X_train, Y_train, EPOCHS=1000, DEVICE=DEVICE)
     last_forecast = two_stage_forecast
 
     two_stage_costs = [] 

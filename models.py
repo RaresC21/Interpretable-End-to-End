@@ -25,8 +25,11 @@ class Forecast(nn.Module):
         return F.relu(f) + 0.05 
 #         return newsvendor.get_cost_from_prob(f)
 
-def train_two_stage(poblem_, X_train, Y_train, X_test, Y_test, EPOCHS = 2710, DEVICE="cpu"):
+def train_two_stage(poblem_, X_train, Y_train, EPOCHS = 2710, DEVICE="cpu"):
 
+    training_set = [[X_train[i], Y_train[i]] for i in range(len(X_train))]
+    training_loader = torch.utils.data.DataLoader(training_set, batch_size=50, shuffle=True)
+    
     n_features = X_train.shape[1]
     n_nodes = Y_train.shape[1]
 
@@ -41,25 +44,19 @@ def train_two_stage(poblem_, X_train, Y_train, X_test, Y_test, EPOCHS = 2710, DE
     mses = []
     batch_size = 10
     for epoch in range(EPOCHS):  # loop over the dataset multiple times
-        for i in range(0, YY.size()[0], batch_size):
-            c = YY[i:i+batch_size:]
-            input = X_train[i:i+batch_size,:]
-
+        for data in training_loader:
+            inp, c = data
+ 
             optimizer_twostage.zero_grad()
 
-            f = two_stage_forecast(input)
+            f = two_stage_forecast(inp)
 
             mse = criterion(f, c) 
+            mses.append(mse.cpu().detach().numpy())
 
             mse.backward()
             optimizer_twostage.step()
             
-            mses = np.append(mses, mse.cpu().detach().numpy())
-
-        # if epoch % 10 == 0:
-        #     test_errs = eval_forecast_model(poblem_, X_test, two_stage_forecast, Y_test) / len(X_test)
-        #     train_errs = eval_forecast_model(poblem_, X_train, two_stage_forecast, Y_train) / len(X_train)
-            # print("epoch ", epoch, "test cost: ", test_errs.item(), "train cost: ", train_errs.item())
     return two_stage_forecast
 
 def train_task_loss(poblem_, X_train, Y_train, X_test, Y_test, two_stage_forecast, EPOCHS = 200, DEVICE="cpu"):
@@ -91,17 +88,6 @@ def train_task_loss(poblem_, X_train, Y_train, X_test, Y_test, two_stage_forecas
             optimizer_task.step()
 
             all_errs.append(error.detach().numpy())
-
-        # if epoch % 1 == 0:
-        #     # print("epoch:", epoch)
-        #     # print("Cost: ", np.mean(all_errs))
-        #     test_errs = eval_forecast_model(poblem_, X_test, forecast, Y_test) / len(X_test)
-        #     train_errs = eval_forecast_model(poblem_, X_train, forecast, Y_train) / len(X_train)
-        #     # print("epoch ", epoch, "test cost: ", test_errs.item(), "train cost: ", train_errs.item())
-        #     all_test_errs.append(test_errs.item())
-
-        #     if test_errs < best_error: 
-        #         best_error = test_errs
 
     return forecast
 
