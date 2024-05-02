@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from interpretable import InterpretableForecast, SparseInterpretableForecast, AggregateInterpretableForecast
+from interpretable import *
 
 from problem import Problem
 from data import DataGen
@@ -15,15 +15,17 @@ import matplotlib.pyplot as plt
 
 from helper import *
 
+
+
 def eval_all(c): 
     two_stage_forecast, task_forecast, sparse_forecast, quantile_forecast = train(c)
     last_forecast = sparse_forecast
 
     print("TESTING -------------------------------------")
-    two_cost, two_dec = eval_model(two_stage_forecast, X_test, Y_test, H, B, problem_.cross_costs, n_samples = 100)
-    task_cost, task_dec = eval_model(task_forecast, X_test, Y_test, H, B, problem_.cross_costs, n_samples = 0)
+    two_cost = eval_model(two_stage_forecast, X_test, Y_test, problem_)
+    task_cost = eval_model(task_forecast, X_test, Y_test, problem_)
     # sparse_cost, interpretable_dec = eval_model(sparse_forecast.predict, X_test, Y_test, H, B, problem_.cross_costs, n_samples = 0)
-    aggregate_cost, interpretable_dec = eval_model(quantile_forecast.predict, X_test, Y_test, H, B, problem_.cross_costs, n_samples = 0)
+    aggregate_cost = eval_model(quantile_forecast, X_test, Y_test, problem_)
     # quantile_cost = -1
     return two_cost, task_cost, 0, aggregate_cost
 
@@ -32,22 +34,21 @@ def train(c):
     cross_costs = np.ones((n_nodes, n_nodes)) * b
     for i in range(n_nodes): 
         for j in range(n_nodes): 
-            cross_costs[i,j] = (abs(i - j)**c) * b / n_nodes
+            cross_costs[i,j] = (abs(i - j)*c) * b / n_nodes
 
     problem_.set_cross_costs(cross_costs)
 
     print("Train end-to-end -------------------------------------")
-    task_forecast = train_task_loss(problem_, X_train, Y_train, X_test, Y_test, two_stage_forecast, EPOCHS=2000)
+    task_forecast = train_task_loss(problem_, X_train, Y_train, two_stage_forecast, EPOCHS=1000, DEVICE=DEVICE)
 
     # print("Train quantile + linear -------------------------------------")
     # sparse_forecast = SparseInterpretableForecast(last_forecast, two_stage_forecast(X_train), 0.1, X_train, Y_train, problem_)
     # sparse_forecast.train(l1_reg = 0, EPOCHS=10000)
 
     print("Train linear + quantile -------------------------------------")
-    quantile_forecast = AggregateInterpretableForecast(two_stage_forecast, two_stage_forecast(X_train), X_train, Y_train, problem_)
-    quantile_forecast.train(l1_reg = 0, EPOCHS=10000)
-
-    # quantile_forecast = None
+    quantile_forecast = AggregateInterpretableForecast(two_stage_forecast, two_stage_forecast(X_train), problem_, DEVICE=DEVICE)
+    quantile_forecast.to(DEVICE)
+    train_interpretable(quantile_forecast, X_train, Y_train, EPOCHS=1000)
 
     print()
     print("AGGREGATE FORECAST MODEL")
@@ -82,7 +83,7 @@ if __name__ == '__main__':
     H = torch.tensor([h for i in range(n_nodes)]).to(DEVICE)
     B = torch.tensor([b for i in range(n_nodes)]).to(DEVICE)  
 
-    problem_ = Problem(H, B, n_nodes)
+    problem_ = Problem(H, B, n_nodes, DEVICE)
     cross_costs = np.array([[0, 0], [0, 0]])
     
     n_data = 100

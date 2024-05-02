@@ -2,11 +2,12 @@ import torch
 import numpy as np
 
 class Problem: 
-    def __init__(self, H, B, n_nodes): 
+    def __init__(self, H, B, n_nodes, DEVICE='cpu'): 
         self.H = H
         self.B = B 
         self.n_nodes = n_nodes
-
+        self.DEVICE=DEVICE
+        
         self.cross_costs = []
         self.set_random_cross_costs()
 
@@ -23,29 +24,17 @@ class Problem:
             cross_costs_ordered,
             key=lambda x: x[0]
         )
-        self.cross_costs = torch.tensor(costs)
+        self.cross_costs = torch.tensor(costs).to(self.DEVICE)
 
     def fulfilment_loss(self, q, d):
-        aa = torch.zeros(q.shape[0], self.n_nodes, self.n_nodes)
-        qq = torch.clone(q) * 0
-        dd = torch.clone(d) * 0
+        aa = torch.zeros(q.shape[0], self.n_nodes, self.n_nodes).to(self.DEVICE)
+        qq = torch.zeros_like(q).to(self.DEVICE)
+        dd = torch.zeros_like(d).to(self.DEVICE)
 
         for c, (i,j) in self.cross_costs_ordered:
             aa[:, i,j] = torch.minimum(q[:, i] - qq[:, i], d[:, j] - dd[:, j])
             qq[:, i] += aa[:, i,j] 
             dd[:, j] += aa[:, i,j]
-
-        # for i in range(self.n_nodes):
-        #     for j in range(self.n_nodes):
-        #         curq = q[:,i]
-        #         curd = d[:,j]
-        #         for edge in self.cross_costs_ordered:
-        #             l,k = edge[1]
-        #             if l == i:
-        #                 curq = curq - aa[:,l,k]
-        #             if k == j:   
-        #                 curd = curd - aa[:,l,k]
-        #         aa[:,i,j] = torch.minimum(curq, curd)
 
         holding_cost = torch.sum(torch.sum(self.H * (q - torch.sum(aa, dim=2)), dim = 1), dim = 0)
         backorder_cost = torch.sum(torch.sum(self.B * (d - torch.sum(aa, dim=1)), dim = 1), dim = 0)

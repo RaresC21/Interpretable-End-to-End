@@ -1,54 +1,56 @@
 import torch 
 import numpy as np
 
+import gurobipy as gp
+from gurobipy import GRB
+
 class Problem: 
-    def __init__(self, H, B, n_nodes, DEVICE='cpu'): 
+    def __init__(self, H, B, n_nodes): 
         self.H = H
         self.B = B 
         self.n_nodes = n_nodes
-        self.DEVICE=DEVICE
-        
-        self.cross_costs = []
-        self.set_random_cross_costs()
 
-    def set_random_cross_costs(self):
-        cross_costs = np.random.rand(self.n_nodes, self.n_nodes)
-        cross_costs = (cross_costs + cross_costs.T) / 2
-        for i in range(self.n_nodes): cross_costs[i,i] = 0
+        # self.cross_costs = []
+        # self.set_random_cross_costs()
 
-        self.set_cross_costs(cross_costs)
+    # def set_random_cross_costs(self):
+    #     cross_costs = np.random.rand(self.n_nodes, self.n_nodes)
+    #     cross_costs = (cross_costs + cross_costs.T) / 2
+    #     for i in range(self.n_nodes): cross_costs[i,i] = 0
 
-    def set_cross_costs(self, costs):
+    #     self.set_cross_costs(cross_costs)
+
+    def get_cross_costs_ordered(self, costs):
         cross_costs_ordered = [(costs[i,j], (i,j)) for i in range(self.n_nodes) for j in range(self.n_nodes)]
-        self.cross_costs_ordered = sorted(
+        cross_costs_ordered = sorted(
             cross_costs_ordered,
             key=lambda x: x[0]
         )
-        self.cross_costs = torch.tensor(costs).to(self.DEVICE)
+        return cross_costs_ordered
 
-    def fulfilment_loss(self, q, d):
-        aa = torch.zeros(q.shape[0], self.n_nodes, self.n_nodes).to(self.DEVICE)
-        qq = torch.zeros_like(q).to(self.DEVICE)
-        dd = torch.zeros_like(d).to(self.DEVICE)
+    def fulfilment_loss(self, q, d, cross_costs, cross_costs_ordered):
+        aa = torch.zeros(q.shape[0], self.n_nodes, self.n_nodes)
+        qq = torch.clone(q) * 0
+        dd = torch.clone(d) * 0
 
-        for c, (i,j) in self.cross_costs_ordered:
+        for c, (i,j) in cross_costs_ordered:
             aa[:, i,j] = torch.minimum(q[:, i] - qq[:, i], d[:, j] - dd[:, j])
             qq[:, i] += aa[:, i,j] 
             dd[:, j] += aa[:, i,j]
 
         holding_cost = torch.sum(torch.sum(self.H * (q - torch.sum(aa, dim=2)), dim = 1), dim = 0)
         backorder_cost = torch.sum(torch.sum(self.B * (d - torch.sum(aa, dim=1)), dim = 1), dim = 0)
-        edge_cost = torch.sum(aa * self.cross_costs)
+        edge_cost = torch.sum(aa * cross_costs)
         return holding_cost + backorder_cost + edge_cost 
 
 
-    def exact_loss(self, q, d):
+    def exact_loss(self, q, d, cross_costs):
         with torch.no_grad():
             aa, val = self.single(q, d)
 
         holding_cost = torch.sum(torch.sum(self.H * (q - torch.sum(aa, dim=2)), dim = 1), dim = 0)
         backorder_cost = torch.sum(torch.sum(self.B * (d - torch.sum(aa, dim=1)), dim = 1), dim = 0)
-        edge_cost = torch.sum(aa * self.cross_costs)
+        edge_cost = torch.sum(aa * cross_costs)
         return aa, holding_cost + backorder_cost + edge_cost
 
     def single(self, q, demands): 
