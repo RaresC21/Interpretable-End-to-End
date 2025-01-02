@@ -4,22 +4,46 @@ import numpy as np
 import gurobipy as gp
 from gurobipy import GRB
 
+from constants import * 
+
 class Problem: 
     def __init__(self, H, B, n_nodes): 
         self.H = H
         self.B = B 
         self.n_nodes = n_nodes
 
-        # self.cross_costs = []
-        # self.set_random_cross_costs()
+        b = B[0].item()
+        self.all_cross_costs = []
+        self.all_ordered = []
+        self.c_values = np.arange(0,b,0.1)
+        for i in range(len(self.c_values)):
+            c = self.c_values[i]
+            cross_costs = torch.ones((self.n_nodes, self.n_nodes), device=DEVICE) * b
+            for i in range(self.n_nodes): 
+                for j in range(self.n_nodes): 
+                    cross_costs[i,j] = (abs(i - j)*c) * b / self.n_nodes
+            cross_costs_ordered = self.get_cross_costs_ordered(cross_costs.cpu().numpy())
+            self.all_cross_costs.append(cross_costs)
+            self.all_ordered.append(cross_costs_ordered)
+            
+    def evaluate(self, model, X_test, Y_test):
+        costs = []
+        for c, o in zip(self.all_cross_costs, self.all_ordered):
+            pred = model(X_test) 
+            cost = self.fulfilment_loss(pred, Y_test, c, o).item()
+            costs.append(cost)
+        return costs, np.mean(costs)   
+    
+    def evaluate_param(self, model, X_test, Y_test): 
+        costs = []
+        for c, o in zip(self.all_cross_costs, self.all_ordered):
+            cross_cost = c[1][0].item()
+            pred = model(X_test, cross_cost) 
+            cost = self.fulfilment_loss(pred, Y_test, c, o).item()
+            costs.append(cost)
+        return costs, np.mean(costs)   
 
-    # def set_random_cross_costs(self):
-    #     cross_costs = np.random.rand(self.n_nodes, self.n_nodes)
-    #     cross_costs = (cross_costs + cross_costs.T) / 2
-    #     for i in range(self.n_nodes): cross_costs[i,i] = 0
-
-    #     self.set_cross_costs(cross_costs)
-
+    
     def get_cross_costs_ordered(self, costs):
         cross_costs_ordered = [(costs[i,j], (i,j)) for i in range(self.n_nodes) for j in range(self.n_nodes)]
         cross_costs_ordered = sorted(
@@ -29,9 +53,9 @@ class Problem:
         return cross_costs_ordered
 
     def fulfilment_loss(self, q, d, cross_costs, cross_costs_ordered):
-        aa = torch.zeros(q.shape[0], self.n_nodes, self.n_nodes)
-        qq = torch.clone(q) * 0
-        dd = torch.clone(d) * 0
+        aa = torch.zeros(q.shape[0], self.n_nodes, self.n_nodes, device=DEVICE)
+        qq = torch.clone(q).to(DEVICE) * 0
+        dd = torch.clone(d).to(DEVICE) * 0
 
         for c, (i,j) in cross_costs_ordered:
             aa[:, i,j] = torch.minimum(q[:, i] - qq[:, i], d[:, j] - dd[:, j])
@@ -41,7 +65,7 @@ class Problem:
         holding_cost = torch.sum(torch.sum(self.H * (q - torch.sum(aa, dim=2)), dim = 1), dim = 0)
         backorder_cost = torch.sum(torch.sum(self.B * (d - torch.sum(aa, dim=1)), dim = 1), dim = 0)
         edge_cost = torch.sum(aa * cross_costs)
-        return holding_cost + backorder_cost + edge_cost 
+        return (holding_cost + backorder_cost + edge_cost) / q.shape[0]
 
 
     def exact_loss(self, q, d, cross_costs):
